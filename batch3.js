@@ -90,6 +90,7 @@ function notifyDue(){
 }
 
 /* ---------- PIN lock ---------- */
+const lesc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hasPin = () => !!localStorage.getItem('sv-pin');
 const b64 = u => btoa(String.fromCharCode(...u)), unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const sty = document.createElement('style');
@@ -100,7 +101,7 @@ const hideLock = () => { lockEl.onclick = null; lockEl.classList.remove('on'); l
 function promptPin(title, sub, canCancel, bio){
   return new Promise(res => {
     let e = '';
-    const draw = () => { lockEl.classList.add('on'); lockEl.innerHTML = `<h2>${esc(title)}</h2><p>${esc(sub || '')}</p><div class="dots">${[0,1,2,3,4,5].map(i => `<i class="${i < e.length ? 'f' : ''}"></i>`).join('')}</div><div class="pad">${[1,2,3,4,5,6,7,8,9,'⌫',0,'OK'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div>${bio ? '<a href="#" data-k="bio">Use Face ID / Touch ID</a>' : ''}${canCancel ? '<a href="#" data-k="x">Cancel</a>' : ''}`; };
+    const draw = () => { lockEl.classList.add('on'); lockEl.innerHTML = `<h2>${lesc(title)}</h2><p>${lesc(sub || '')}</p><div class="dots">${[0,1,2,3,4,5].map(i => `<i class="${i < e.length ? 'f' : ''}"></i>`).join('')}</div><div class="pad">${[1,2,3,4,5,6,7,8,9,'⌫',0,'OK'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div>${bio ? '<a href="#" data-k="bio">Use Face ID / Touch ID</a>' : ''}${canCancel ? '<a href="#" data-k="x">Cancel</a>' : ''}`; };
     lockEl.onclick = ev => {
       const b = ev.target.closest('[data-k]'); if (!b) return; ev.preventDefault(); const k = b.dataset.k;
       if (k === '⌫') e = e.slice(0, -1);
@@ -119,7 +120,7 @@ async function bioAuth(){ try { await navigator.credentials.get({publicKey:{chal
 let locking = false;
 async function unlock(){
   if (locking) return; locking = true; let fails = +localStorage.getItem('sv-pf') || 0, msg = '';
-  for (;;) {
+  try { for (;;) {
     const w = (+localStorage.getItem('sv-pu') || 0) - Date.now();
     if (w > 0) { lockEl.classList.add('on'); lockEl.innerHTML = `<h2>Too many tries</h2><p>Wait ${Math.ceil(w / 1000)} seconds</p>`; await new Promise(r => setTimeout(r, w)); }
     const p = await promptPin('SmartVault is locked', msg, false, !!localStorage.getItem('sv-bio'));
@@ -127,7 +128,9 @@ async function unlock(){
     if (await pinOk(p)) { localStorage.setItem('sv-pf', '0'); break; }
     fails++; localStorage.setItem('sv-pf', fails); msg = 'Wrong PIN'; if (fails >= 5) localStorage.setItem('sv-pu', Date.now() + 30000 * (fails - 4));
   }
-  hideLock(); locking = false;
+  hideLock(); }
+  catch (e) { lockEl.classList.add('on'); lockEl.innerHTML = '<h2>Locked</h2><p>Please close and reopen SmartVault.</p>'; }
+  finally { locking = false; }
 }
 async function pinFlow(a){
   if (a === 'bio') { try { const c = await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)), rp:{name:'SmartVault'}, user:{id:crypto.getRandomValues(new Uint8Array(16)), name:'smartvault', displayName:'SmartVault'}, pubKeyCredParams:[{type:'public-key', alg:-7}, {type:'public-key', alg:-257}], authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required'}, timeout:60000}}); localStorage.setItem('sv-bio', b64(new Uint8Array(c.rawId))); toast('Face ID / Touch ID turned on'); } catch (e) { toast('Could not turn on Face ID here'); } return render(); }
