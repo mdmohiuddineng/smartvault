@@ -17,7 +17,8 @@ document.head.appendChild(st);
 const gate = document.createElement('div'); gate.className = 'gate'; document.body.appendChild(gate);
 
 function paintGate(){
-  const show = !signedIn() && !sessionStorage.getItem('sv-skip');
+  const pinOnly = !!(localStorage.getItem('sv-pin') && localStorage.getItem('sv-hint')); // PIN set and signed in before: open straight to the app
+  const show = !signedIn() && !sessionStorage.getItem('sv-skip') && !pinOnly;
   gate.classList.toggle('on', show);
   if (!show) return;
   gate.innerHTML = `<img src="icons/icon-192.png" alt=""><h1>Welcome back</h1><p>Your Personal Digital Locker</p>
