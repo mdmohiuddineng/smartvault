@@ -1,5 +1,5 @@
-const V = 'smartvault-v4';
-const SHELL = ['./', 'index.html', 'style.css', 'forms.css', 'app.js', 'auth.js', 'drive.js', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png'];
+const V = 'smartvault-v5';
+const SHELL = ['./', 'index.html', 'style.css', 'forms.css', 'app.js', 'auth.js', 'drive.js', 'extras.js', 'manifest.json', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)));
   self.skipWaiting();

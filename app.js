@@ -5,7 +5,7 @@ const inr = n => '₹' + Math.round(n).toLocaleString('en-IN');
 const CATS = ['Electricity','Water','Internet','Shopping','Medical','Insurance','Credit Cards','Bank Statements','Vehicle Documents','Home Documents','Warranties','Personal Documents','Family Documents','Other'];
 const MEM = ['Myself','Wife','Parents','Family'];
 const NAV = [['home','Home','i-home'],['docs','Documents','i-folder'],['money','Expenses','i-chart'],['alerts','Reminders','i-bell'],['settings','Settings','i-gear']];
-const PHASE = {money:'Phase 6',alerts:'Phase 7'};
+const PHASE = {alerts:'Batch 3'};
 const colorOf = c => `hsl(${(Math.max(0, CATS.indexOf(c)) * 47) % 360} 65% 50%)`;
 const today = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
 const mkey = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
@@ -61,7 +61,7 @@ function docsView(){
 }
 function fillList(){
   const q = ($('#q')?.value || '').toLowerCase(), c = $('#cf')?.value || '';
-  const r = state.docs.filter(d => (!c || d.category === c) && (!q || [d.name,d.vendor,d.invoice,d.notes,d.category,(d.tags||[]).join(' '),String(d.amount)].join(' ').toLowerCase().includes(q)));
+  const r = state.docs.filter(d => (!c || d.category === c) && (!q || [d.name,d.vendor,d.invoice,d.notes,d.category,d.ocr,d.billDate,(d.tags||[]).join(' '),String(d.amount)].join(' ').toLowerCase().includes(q)));
   $('#list').innerHTML = r.length ? r.map(item).join('') : `<div class="empty"><div class="big"><svg><use href="#i-folder"/></svg></div><h3>${state.docs.length ? 'No matches' : 'No documents yet'}</h3><p>${state.docs.length ? 'Try a different search.' : 'Tap + to add one.'}</p></div>`;
 }
 
@@ -73,12 +73,12 @@ function settings(){
   <div class="set"><span>Storage protection</span><small style="color:var(--mut)">${p === null ? 'Unknown' : p ? 'Protected' : 'Not guaranteed. iOS can clear it.'}</small></div>
   ${acctRows()}
   <div class="set"><span>PIN lock and backup</span><small style="color:var(--mut)">Phase 8</small></div>
-  <div class="set"><span>About</span><small style="color:var(--mut)">SmartVault 0.4 (Phase 4)</small></div></div></div>`;
+  <div class="set"><span>About</span><small style="color:var(--mut)">SmartVault 0.5 (Batch 2)</small></div></div></div>`;
 }
 const placeholder = id => { const n = NAV.find(x => x[0] === id); return `<div class="view"><div class="top"><h1>${n[1]}</h1></div><div class="card empty"><div class="big"><svg><use href="#${n[2]}"/></svg></div><h3>Nothing here yet</h3><p>This section is built in ${PHASE[id]}.</p></div></div>`; };
 
 function render(){
-  $('#view').innerHTML = state.view === 'home' ? home() : state.view === 'docs' ? docsView() : state.view === 'settings' ? settings() : placeholder(state.view);
+  $('#view').innerHTML = state.view === 'home' ? home() : state.view === 'docs' ? docsView() : state.view === 'settings' ? settings() : state.view === 'money' ? moneyView() : placeholder(state.view);
   if (state.view === 'docs') fillList();
   renderNav(); window.scrollTo(0,0);
 }
@@ -100,18 +100,19 @@ function form(d, q){
   ${fld('Document name','name',inp('name', r.name || genName(r), 'text', 'maxlength="120"'))}
   ${fld('Category','category',sel('category',CATS,r.category))}
   ${fld('Vendor','vendor',inp('vendor',r.vendor,'text','maxlength="80"'))}
-  <div class="r2">${fld('Invoice number','invoice',inp('invoice',r.invoice,'text','maxlength="60"'))}${fld('Amount (₹)','amount',inp('amount',r.amount || '','number','inputmode="decimal" min="0" step="0.01"'))}</div>
+  ${fld('Invoice number','invoice',inp('invoice',r.invoice,'text','maxlength="60"'))}<div class="r2">${fld('Amount (₹)','amount',inp('amount',r.amount || '','number','inputmode="decimal" min="0" step="0.01"'))}${fld('Tax (₹)','tax',inp('tax',r.tax || '','number','inputmode="decimal" min="0" step="0.01"'))}</div>
   <div class="r2">${fld('Bill date','billDate',inp('billDate',r.billDate,'date'))}${fld('Due date','dueDate',inp('dueDate',r.dueDate,'date'))}</div>
   <div class="r2">${fld('Payment status','status',sel('status',['Unpaid','Paid','Partial'],r.status))}${fld('Family member','member',sel('member',MEM,r.member))}</div>
   ${fld('Tags (comma separated)','tags',inp('tags',(r.tags||[]).join(', ')))}
   ${fld('Notes','notes',`<textarea id="f-notes" rows="3" maxlength="500">${esc(r.notes)}</textarea>`)}</div>`);
+  if (q && q.f.type.startsWith('image/')) autoFill(q);
 }
 
 async function save(){
   const v = id => $('#f-' + id).value.trim(), {r, q} = cur, amount = parseFloat(v('amount') || '0');
   if (!v('name')) return toast('Enter a document name');
   if (!(amount >= 0 && amount < 1e9)) return toast('Enter a valid amount');
-  const rec = {...r, name:v('name').replace(/[\\/:*?"<>|]/g,'_'), category:v('category'), vendor:v('vendor'), invoice:v('invoice'), amount, billDate:v('billDate'), dueDate:v('dueDate'), status:v('status'), member:v('member'), tags:v('tags').split(',').map(t => t.trim()).filter(Boolean).slice(0,10), notes:v('notes'), updated:Date.now(), driveId:r.driveId || null, dirty:!!r.driveId};
+  const rec = {...r, name:v('name').replace(/[\\/:*?"<>|]/g,'_'), category:v('category'), vendor:v('vendor'), invoice:v('invoice'), amount, billDate:v('billDate'), dueDate:v('dueDate'), status:v('status'), member:v('member'), tags:v('tags').split(',').map(t => t.trim()).filter(Boolean).slice(0,10), notes:v('notes'), tax:parseFloat(v('tax') || '0') || 0, ocr:cur.ocr || r.ocr || '', updated:Date.now(), driveId:r.driveId || null, dirty:!!r.driveId};
   try {
     if (q) { await tx('files','readwrite',s => s.put({id:rec.id, blob:q.f})); Object.assign(rec, {hash:q.hash, mime:q.f.type, size:q.f.size, fileName:q.f.name}); }
     await tx('docs','readwrite',s => s.put(rec));
@@ -120,7 +121,7 @@ async function save(){
   await load(); toast('Saved on this device'); syncSoon();
   if (q) next(); else { closeOv(); render(); }
 }
-async function pick(files){ for (const f of files) queue.push({f, hash:await sha(f)}); next(); }
+async function pick(files){ for (const f of files) { const h = await sha(f); queue.push({f:await shrink(f), hash:h}); } next(); }
 function next(){ const q = queue.shift(); if (q) form(null, q); else { closeOv(); render(); } }
 
 async function detail(id){
