@@ -63,7 +63,7 @@ async function getFile(d){
 }
 const backupId = async root => (await (await g(GD + '/files?fields=files(id)&q=' + encodeURIComponent(`name='smartvault-db.json' and '${root}' in parents and trashed=false`))).json()).files[0]?.id;
 async function saveBackup(){
-  const s = await structure(), id = await backupId(s.root), body = JSON.stringify({v:1, saved:Date.now(), gone:gone(), docs:state.docs.filter(d => d.driveId)});
+  const s = await structure(), id = await backupId(s.root), body = JSON.stringify({v:1, saved:Date.now(), gone:gone(), docs:state.docs.filter(d => d.driveId), rem:state.rem || [], war:state.war || []});
   if (id) await g(GU + '/files/' + id + '?uploadType=media', {method:'PATCH', headers:J(), body});
   else { const b = 'svb'; await g(GU + '/files?uploadType=multipart', {method:'POST', headers:{'Content-Type':'multipart/related; boundary=' + b}, body:`--${b}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({name:'smartvault-db.json', parents:[s.root]})}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`}); }
 }
@@ -76,6 +76,7 @@ async function pull(){
     if (!l || (r.updated || 0) > (l.updated || 0)) { await tx('docs', 'readwrite', s2 => s2.put({...r, dirty:false})); n++; }
   }
   for (const l of state.docs) if (gn[l.id] && gn[l.id] > (l.updated || 0)) { await tx('docs', 'readwrite', s2 => s2.delete(l.id)); await tx('files', 'readwrite', s2 => s2.delete(l.id)); n++; }
+  n += await pullExtra(b, gn);
   return n;
 }
 async function syncAll(){
@@ -91,7 +92,7 @@ async function syncAll(){
     }
     await load();
     for (const d of state.docs.filter(d => d.driveId && d.dirty)) { try { await pushMeta(d); await tx('docs', 'readwrite', s => s.put({...d, dirty:false})); } catch (e) { if (e.message === 'signin') throw e; fail++; } }
-    say('Checking Drive backup...'); await pull(); await load(); await saveBackup();
+    say('Checking Drive backup...'); await pull(); await load(); await loadExtra(); await saveBackup();
     try { dv.quota = (await (await g(GD + '/about?fields=storageQuota')).json()).storageQuota; } catch (e) {}
     localStorage.setItem('sv-last', Date.now());
     say(fail ? `${fail} item(s) failed. Tap Sync now to retry.` : 'Synced with Google Drive.');
@@ -118,6 +119,6 @@ const driveRows = () => `<div class="set"><span>Drive storage</span><small style
 document.addEventListener('click', async e => {
   const b = e.target.closest('[data-dv]'); if (!b) return; const a = b.dataset.dv;
   if (a === 'sync') syncAll();
-  else if (a === 'restore') { try { const n = await pull(); await load(); refresh(); toast(n ? n + ' item(s) restored' : 'Nothing new to restore'); } catch (x) { toast('Could not read the Drive backup'); } }
+  else if (a === 'restore') { try { const n = await pull(); await load(); await loadExtra(); refresh(); toast(n ? n + ' item(s) restored' : 'Nothing new to restore'); } catch (x) { toast('Could not read the Drive backup'); } }
   else if (a === 'free') { await freeSpace(); refresh(); }
 });

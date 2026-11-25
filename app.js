@@ -14,8 +14,8 @@ let db, cur = {}, queue = [];
 
 /* ---------- IndexedDB ---------- */
 const openDB = () => new Promise((res, rej) => {
-  const r = indexedDB.open('smartvault', 1);
-  r.onupgradeneeded = () => { r.result.createObjectStore('docs', {keyPath:'id'}); r.result.createObjectStore('files', {keyPath:'id'}); };
+  const r = indexedDB.open('smartvault', 2);
+  r.onupgradeneeded = () => { for (const n of ['docs','files','rem','war']) if (!r.result.objectStoreNames.contains(n)) r.result.createObjectStore(n, {keyPath:'id'}); };
   r.onsuccess = () => { db = r.result; res(); }; r.onerror = () => rej(r.error);
 });
 const tx = (st, mode, f) => new Promise((res, rej) => {
@@ -53,7 +53,7 @@ function home(){
   <div class="hero"><small>Spent this month</small><div class="amt">${inr(sum(mon))}</div><div class="row"><div class="pill">Paid<b>${inr(sum(mon.filter(d => d.status==='Paid')))}</b></div><div class="pill">Pending<b>${inr(sum(mon.filter(d => d.status!=='Paid')))}</b></div></div></div>
   <div class="grid"><div class="card stat"><b>${D.length}</b><span>Total documents</span></div><div class="card stat"><b>${bills.length}</b><span>Bills added</span></div>
   <div class="card stat"><b style="color:var(--warn)">${bills.filter(d => d.status!=='Paid').length}</b><span>Pending bills</span></div><div class="card stat"><b style="color:var(--ok)">${bills.filter(d => d.status==='Paid').length}</b><span>Paid bills</span></div></div>
-  ${syncCard()}${body}</div>`;
+  ${syncCard()}${dueCards()}${body}</div>`;
 }
 
 function docsView(){
@@ -72,13 +72,13 @@ function settings(){
   <div class="set"><span>Stored on this device</span><small style="color:var(--mut)">${state.docs.length} documents</small></div>
   <div class="set"><span>Storage protection</span><small style="color:var(--mut)">${p === null ? 'Unknown' : p ? 'Protected' : 'Not guaranteed. iOS can clear it.'}</small></div>
   ${acctRows()}
-  <div class="set"><span>PIN lock and backup</span><small style="color:var(--mut)">Phase 8</small></div>
-  <div class="set"><span>About</span><small style="color:var(--mut)">SmartVault 0.5 (Batch 2)</small></div></div></div>`;
+  ${b3Settings()}
+  <div class="set"><span>About</span><small style="color:var(--mut)">SmartVault 1.0 (Batch 3)</small></div></div></div>`;
 }
 const placeholder = id => { const n = NAV.find(x => x[0] === id); return `<div class="view"><div class="top"><h1>${n[1]}</h1></div><div class="card empty"><div class="big"><svg><use href="#${n[2]}"/></svg></div><h3>Nothing here yet</h3><p>This section is built in ${PHASE[id]}.</p></div></div>`; };
 
 function render(){
-  $('#view').innerHTML = state.view === 'home' ? home() : state.view === 'docs' ? docsView() : state.view === 'settings' ? settings() : state.view === 'money' ? moneyView() : placeholder(state.view);
+  $('#view').innerHTML = state.view === 'home' ? home() : state.view === 'docs' ? docsView() : state.view === 'settings' ? settings() : state.view === 'money' ? moneyView() : state.view === 'alerts' ? alertsView() : placeholder(state.view);
   if (state.view === 'docs') fillList();
   renderNav(); window.scrollTo(0,0);
 }
@@ -168,7 +168,7 @@ document.addEventListener('input', e => {
 
 (async () => {
   applyTheme();
-  try { await openDB(); await load(); if (navigator.storage?.persisted) state.persisted = await navigator.storage.persisted(); } catch (e) { toast('Local storage is unavailable in this browser mode.'); }
-  render();
+  try { await openDB(); await load(); await loadExtra(); if (navigator.storage?.persisted) state.persisted = await navigator.storage.persisted(); } catch (e) { toast('Local storage is unavailable in this browser mode.'); }
+  render(); notifyDue();
 })();
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(() => {}));
