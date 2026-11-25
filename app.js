@@ -34,7 +34,7 @@ const sum = a => a.reduce((t,d) => t + d.amount, 0);
 
 /* ---------- views ---------- */
 function renderNav(){ const h = NAV.map(([id,l,ic]) => `<button data-v="${id}" class="${state.view===id?'on':''}"><svg><use href="#${ic}"/></svg>${l}</button>`).join(''); $('#tabNav').innerHTML = h; $('#sideNav').innerHTML = h; }
-const item = d => `<button class="li" data-open="${d.id}"><div class="ic" style="background:${colorOf(d.category)}">${kind(d)}</div><div class="m"><b>${esc(d.name)}</b><small>${esc(d.category)}${d.amount ? ' · ' + inr(d.amount) : ''}</small></div>${d.amount ? `<span class="tag ${d.status==='Paid'?'t-ok':'t-warn'}">${esc(d.status)}</span>` : ''}</button>`;
+const item = d => `<button class="li" data-open="${d.id}"><div class="ic" style="background:${colorOf(d.category)}">${kind(d)}</div><div class="m"><b>${esc(d.name)}</b><small>${esc(d.category)}${d.amount ? ' · ' + inr(d.amount) : ''}${d.driveId ? ' · On Drive' : ''}</small></div>${d.amount ? `<span class="tag ${d.status==='Paid'?'t-ok':'t-warn'}">${esc(d.status)}</span>` : ''}</button>`;
 
 function home(){
   const D = state.docs, bills = D.filter(d => d.amount > 0), k = mkey(new Date());
@@ -73,7 +73,7 @@ function settings(){
   <div class="set"><span>Storage protection</span><small style="color:var(--mut)">${p === null ? 'Unknown' : p ? 'Protected' : 'Not guaranteed. iOS can clear it.'}</small></div>
   ${acctRows()}
   <div class="set"><span>PIN lock and backup</span><small style="color:var(--mut)">Phase 8</small></div>
-  <div class="set"><span>About</span><small style="color:var(--mut)">SmartVault 0.3 (Phase 3)</small></div></div></div>`;
+  <div class="set"><span>About</span><small style="color:var(--mut)">SmartVault 0.4 (Phase 4)</small></div></div></div>`;
 }
 const placeholder = id => { const n = NAV.find(x => x[0] === id); return `<div class="view"><div class="top"><h1>${n[1]}</h1></div><div class="card empty"><div class="big"><svg><use href="#${n[2]}"/></svg></div><h3>Nothing here yet</h3><p>This section is built in ${PHASE[id]}.</p></div></div>`; };
 
@@ -111,13 +111,13 @@ async function save(){
   const v = id => $('#f-' + id).value.trim(), {r, q} = cur, amount = parseFloat(v('amount') || '0');
   if (!v('name')) return toast('Enter a document name');
   if (!(amount >= 0 && amount < 1e9)) return toast('Enter a valid amount');
-  const rec = {...r, name:v('name').replace(/[\\/:*?"<>|]/g,'_'), category:v('category'), vendor:v('vendor'), invoice:v('invoice'), amount, billDate:v('billDate'), dueDate:v('dueDate'), status:v('status'), member:v('member'), tags:v('tags').split(',').map(t => t.trim()).filter(Boolean).slice(0,10), notes:v('notes'), updated:Date.now(), driveId:r.driveId || null};
+  const rec = {...r, name:v('name').replace(/[\\/:*?"<>|]/g,'_'), category:v('category'), vendor:v('vendor'), invoice:v('invoice'), amount, billDate:v('billDate'), dueDate:v('dueDate'), status:v('status'), member:v('member'), tags:v('tags').split(',').map(t => t.trim()).filter(Boolean).slice(0,10), notes:v('notes'), updated:Date.now(), driveId:r.driveId || null, dirty:!!r.driveId};
   try {
     if (q) { await tx('files','readwrite',s => s.put({id:rec.id, blob:q.f})); Object.assign(rec, {hash:q.hash, mime:q.f.type, size:q.f.size, fileName:q.f.name}); }
     await tx('docs','readwrite',s => s.put(rec));
   } catch (e) { return toast('Could not save. Storage may be full.'); }
   if (navigator.storage?.persist) navigator.storage.persist().then(p => state.persisted = p);
-  await load(); toast('Saved on this device');
+  await load(); toast('Saved on this device'); syncSoon();
   if (q) next(); else { closeOv(); render(); }
 }
 async function pick(files){ for (const f of files) queue.push({f, hash:await sha(f)}); next(); }
@@ -125,12 +125,12 @@ function next(){ const q = queue.shift(); if (q) form(null, q); else { closeOv()
 
 async function detail(id){
   const d = state.docs.find(x => x.id === id); if (!d) return;
-  const f = await tx('files','readonly',s => s.get(id)), url = f?.blob ? URL.createObjectURL(f.blob) : '';
+  const f = await getFile(d), url = f?.blob ? URL.createObjectURL(f.blob) : '';
   cur = {d, url};
   const pv = !url ? '' : d.mime?.startsWith('image/') ? `<img class="pv" src="${url}" alt="">` : `<div class="pv pdf">PDF file</div>`;
   const kv = (a,b) => b ? `<div class="kv"><span>${a}</span><b>${esc(b)}</b></div>` : '';
   ov(`<div class="ovh"><button data-act="close">Close</button><b>Details</b><span style="width:50px"></span></div><div class="ovb">${pv}<div class="card">
-  ${kv('Name',d.name)}${kv('Category',d.category)}${kv('Vendor',d.vendor)}${kv('Invoice',d.invoice)}${kv('Amount',d.amount ? inr(d.amount) : '')}${kv('Bill date',d.billDate)}${kv('Due date',d.dueDate)}${kv('Status',d.amount ? d.status : '')}${kv('Member',d.member)}${kv('Tags',(d.tags||[]).join(', '))}${kv('Notes',d.notes)}${kv('Storage','This device only')}</div>
+  ${kv('Name',d.name)}${kv('Category',d.category)}${kv('Vendor',d.vendor)}${kv('Invoice',d.invoice)}${kv('Amount',d.amount ? inr(d.amount) : '')}${kv('Bill date',d.billDate)}${kv('Due date',d.dueDate)}${kv('Status',d.amount ? d.status : '')}${kv('Member',d.member)}${kv('Tags',(d.tags||[]).join(', '))}${kv('Notes',d.notes)}${kv('Storage', d.driveId ? 'Google Drive' : 'This device only' + (d.syncErr ? ' (upload failed: ' + d.syncErr + ')' : ' (not uploaded yet)'))}</div>
   <div class="acts">${url ? `<a class="btn" href="${url}" target="_blank" rel="noopener">Open</a><button class="btn ghost" data-act="dl">Download</button>` : ''}
   <button class="btn ghost" data-act="edit">Edit</button>${d.amount ? `<button class="btn ghost" data-act="paid">Mark ${d.status==='Paid' ? 'unpaid' : 'paid'}</button>` : ''}<button class="btn red" data-act="del">Delete</button></div></div>`);
 }
@@ -142,7 +142,7 @@ async function act(a){
   else if (a === 'save') await save();
   else if (a === 'edit') { const x = d; closeOv(); form(x, null); }
   else if (a === 'paid') { await tx('docs','readwrite',s => s.put({...d, status:d.status==='Paid' ? 'Unpaid' : 'Paid', updated:Date.now()})); await load(); closeOv(); render(); toast('Updated'); }
-  else if (a === 'del') { if (!confirm('Delete "' + d.name + '" from this device? This cannot be undone.')) return; await tx('docs','readwrite',s => s.delete(d.id)); await tx('files','readwrite',s => s.delete(d.id)); await load(); closeOv(); render(); toast('Deleted'); }
+  else if (a === 'del') { if (!confirm('Delete "' + d.name + '"? ' + (d.driveId ? 'The Google Drive copy moves to Drive trash.' : 'It will be removed from this device.'))) return; try { await driveTrash(d); } catch (e) { return toast(e.message === 'signin' ? 'Sign in to delete the Drive copy too' : 'Could not delete from Drive. Try again.'); } markGone(d.id); await tx('docs','readwrite',s => s.delete(d.id)); await tx('files','readwrite',s => s.delete(d.id)); await load(); closeOv(); render(); toast('Deleted'); }
   else if (a === 'dl') { const e = (d.fileName || '').match(/\.[a-z0-9]+$/i), l = document.createElement('a'); l.href = cur.url; l.download = d.name + (e ? e[0] : ''); document.body.appendChild(l); l.click(); l.remove(); }
 }
 

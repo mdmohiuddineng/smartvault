@@ -59,6 +59,7 @@ async function onToken(r){
     auth.err = {cancel:'Google sign-in was not completed.', scope:'Please allow access to files created by SmartVault, then try again.', email:'This account is not approved for this app. Sign in with an approved Google account.', verify:'Could not verify your Google sign-in. Try again.'}[e] || 'Sign-in failed. Check your internet and try again.';
   }
   auth.busy = false; refresh();
+  if (signedIn() && typeof syncAll === 'function') syncAll();
 }
 
 function signOut(){
@@ -67,9 +68,9 @@ function signOut(){
   sessionStorage.removeItem('sv-skip'); refresh();
 }
 
-const syncCard = () => { const ok = signedIn(); return `<div class="card sync"><div class="ic"><svg><use href="#i-cloud"/></svg></div><div><b>Google Drive</b><small>${ok ? 'Signed in as ' + esc(auth.user.email) + '. Folders and upload arrive in Phase 4.' : 'Not connected. Files are only on this device.'}</small></div>${ok ? '' : '<button class="btn ghost" data-auth="in">Connect</button>'}</div>`; };
+const syncCard = () => { const ok = signedIn(); if (ok && typeof driveCard === 'function') return driveCard(); return `<div class="card sync"><div class="ic"><svg><use href="#i-cloud"/></svg></div><div><b>Google Drive</b><small>${ok ? 'Signed in as ' + esc(auth.user.email) + '. Folders and upload arrive in Phase 4.' : 'Not connected. Files are only on this device.'}</small></div>${ok ? '' : '<button class="btn ghost" data-auth="in">Connect</button>'}</div>`; };
 const acctRows = () => signedIn()
-  ? `<div class="set"><span>Google account</span><small style="color:var(--mut)">${esc(auth.user.email)}</small></div><div class="set"><span>Session</span><button class="btn red" data-auth="out" style="margin:0">Sign out</button></div>`
+  ? `<div class="set"><span>Google account</span><small style="color:var(--mut)">${esc(auth.user.email)}</small></div><div class="set"><span>Session</span><button class="btn red" data-auth="out" style="margin:0">Sign out</button></div>${typeof driveRows === 'function' ? driveRows() : ''}`
   : `<div class="set"><span>Google account</span><button class="btn ghost" data-auth="in" style="margin:0">${auth.busy ? 'Connecting...' : 'Connect'}</button></div>${auth.err ? `<div class="note">${esc(auth.err)}</div>` : ''}`;
 
 document.addEventListener('click', e => {
